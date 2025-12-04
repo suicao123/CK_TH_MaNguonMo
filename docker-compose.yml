@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # --- 1. SERVICE DATABASE (MySQL) ---
+  db:
+    image: mysql:8.0
+    container_name: mysql_db
+    restart: always
+    environment:
+      # Lấy giá trị từ file .env
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3306:3306" # Để bạn có thể dùng Workbench/DBeaver kết nối
+    volumes:
+      - mysql_data:/var/lib/mysql # Lưu dữ liệu lại, tắt docker không bị mất
+    networks:
+      - app_network
+
+  # --- 2. SERVICE BACKEND (NodeJS) ---
+  backend:
+    build: ./BE              # <-- Quan trọng: Trỏ đúng vào thư mục BE của bạn
+    container_name: node_backend
+    ports:
+      - "5000:5000"
+    environment:
+      - DB_HOST=db           # Tên service 'db' ở trên chính là host
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - PORT=5000
+    depends_on:
+      - db                   # Chờ db khởi tạo rồi mới chạy backend
+    volumes:
+      - ./BE:/app            # Sync code từ máy thật vào container (Hot Reload)
+      - /app/node_modules    # Giữ node_modules của container, không cho máy thật đè lên
+    networks:
+      - app_network
+    command: npm run dev     # Chạy lệnh dev (nodemon)
+
+  # --- 3. SERVICE FRONTEND (Vite + React) ---
+  frontend:
+    build: ./FE              # <-- Quan trọng: Trỏ đúng vào thư mục FE của bạn
+    container_name: vite_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Bắt buộc để Hot Reload hoạt động tốt trên Windows
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./FE:/app            # Sync code (Hot Reload)
+      - /app/node_modules    # Giữ node_modules riêng
+    networks:
+      - app_network
+    # Vite cần chạy với host 0.0.0.0 để Docker map được port
+    command: npm run dev -- --host 0.0.0.0 --port 3000
+
+# --- KHAI BÁO VOLUME VÀ NETWORK ---
+volumes:
+  mysql_data:
+
+networks:
+  app_network:
+    driver: bridge
